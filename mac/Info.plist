@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Ferry</string>
+    <key>CFBundleDisplayName</key>
+    <string>Ferry</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.ferry.mac</string>
+    <key>CFBundleExecutable</key>
+    <string>Ferry</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Ferry finds your phone on this Wi-Fi so you can send files and clipboard text.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_ferry._tcp</string>
+    </array>
+</dict>
+</plist>
