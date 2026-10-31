@@ -4,6 +4,8 @@ Send files and clipboard text between an Android phone and a Mac on the same Wi-
 
 - `mac/` — menu bar app (Swift, SwiftUI `MenuBarExtra`). Build with `mac/build.sh`.
 - `android/` — Android app (Kotlin, Compose). Build with `./gradlew assembleDebug`.
+- `package.sh` — builds both into `dist/Ferry-<version>.zip` (universal Ferry.app, Ferry.apk and
+  [INSTALL.md](INSTALL.md)) for setting up another Mac and phone.
 
 ## Using it
 
