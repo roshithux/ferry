@@ -183,15 +183,18 @@ struct MenuView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Recent").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ForEach(model.activity) { item in
+                let copied = model.copiedActivityID == item.id
                 Button {
-                    if let url = item.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    model.open(item)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: item.incoming ? "arrow.down.circle" : "arrow.up.circle")
                             .foregroundStyle(item.incoming ? .blue : .secondary)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(item.title).lineLimit(1).truncationMode(.middle)
-                            if !item.detail.isEmpty {
+                            if copied {
+                                Label("Copied", systemImage: "checkmark").font(.caption).foregroundStyle(.secondary)
+                            } else if !item.detail.isEmpty {
                                 Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                         }
@@ -200,7 +203,8 @@ struct MenuView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(item.fileURL == nil ? "" : "Show in Finder")
+                .disabled(item.fileURL == nil && item.text == nil)
+                .help(item.fileURL != nil ? "Show in Finder" : item.text != nil ? "Copy again" : "")
             }
         }
     }

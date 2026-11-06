@@ -4,6 +4,10 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
@@ -21,6 +25,7 @@ class FerryService : Service() {
     private var discovery: Discovery? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var statusJob: Job? = null
+    private var wifiWatcher: ConnectivityManager.NetworkCallback? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -49,7 +54,11 @@ class FerryService : Service() {
             }
         }
 
-        discovery = Discovery(this, socket.localPort).also { it.start() }
+        discovery = Discovery(this, socket.localPort).also {
+            it.start()
+            Ferry.discovery = it
+        }
+        wifiWatcher = watchWifi()
 
         val notifications = getSystemService(NotificationManager::class.java)
         statusJob = Ferry.scope.launch {
@@ -65,11 +74,31 @@ class FerryService : Service() {
 
     override fun onDestroy() {
         statusJob?.cancel()
+        wifiWatcher?.let { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) }
+        Ferry.discovery = null
         discovery?.stop()
         runCatching { server?.close() }
         multicastLock?.release()
         Ferry.serverPort = 0
         super.onDestroy()
+    }
+
+    /** Searches again after joining a different Wi-Fi, or rejoining one; the old search won't recover. */
+    private fun watchWifi(): ConnectivityManager.NetworkCallback {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            private var current: Network? = null
+
+            override fun onAvailable(network: Network) {
+                val changed = current != null && current != network
+                current = network
+                if (changed) discovery?.refresh()
+            }
+        }
+        getSystemService(ConnectivityManager::class.java).registerNetworkCallback(
+            NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
+            callback,
+        )
+        return callback
     }
 
     /** Prefers the fixed port so the Mac's remembered address keeps working; Bonjour carries whichever we get. */

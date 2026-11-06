@@ -49,6 +49,7 @@ object Ferry {
     val busy = MutableStateFlow<String?>(null)
 
     @Volatile var serverPort = 0
+    @Volatile var discovery: Discovery? = null
     lateinit var app: Context
         private set
 
@@ -92,6 +93,8 @@ object Ferry {
     fun unpair() {
         Store.mac = null
         paired.value = null
+        // Show every Mac on the Wi-Fi right away, in case the running search has gone quiet.
+        discovery?.refresh()
     }
 
     fun rememberMacAddress(host: String?, port: Int) {
@@ -263,8 +266,7 @@ object Ferry {
             }
         } else if (item.text != null) {
             context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Ferry", item.text))
-            // Android 13+ shows its own "Copied" confirmation.
-            if (Build.VERSION.SDK_INT < 33) toast("Copied")
+            toast("Copied")
         }
     }
 

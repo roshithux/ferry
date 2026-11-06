@@ -17,6 +17,8 @@ struct Activity: Identifiable {
     let title: String
     let detail: String
     let fileURL: URL?
+    /// Full text of clipboard items, so clicking one can copy it again.
+    var text: String? = nil
     let date = Date()
 }
 
@@ -53,6 +55,8 @@ final class FerryModel: ObservableObject {
     @Published private(set) var peers: [Peer] = []
     @Published private(set) var onlineEndpoints: [String: NWEndpoint] = [:]
     @Published private(set) var activity: [Activity] = []
+    /// The Recent item just copied again, which shows "Copied" for a moment.
+    @Published private(set) var copiedActivityID: UUID?
     @Published private(set) var busy: String?
     @Published var lastError: String?
     @Published var selectedPeerID: String?
@@ -223,7 +227,7 @@ final class FerryModel: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        record(Activity(incoming: true, title: "Clipboard from \(peer.name)", detail: preview(text), fileURL: nil))
+        record(Activity(incoming: true, title: "Clipboard from \(peer.name)", detail: preview(text), fileURL: nil, text: text))
         notify(title: "Copied from \(peer.name)", body: preview(text))
     }
 
@@ -301,7 +305,7 @@ final class FerryModel: ObservableObject {
                 try await wire.send(data)
             }
         } done: { [weak self] in
-            self?.record(Activity(incoming: false, title: "Clipboard to \(peer.name)", detail: self?.preview(text) ?? "", fileURL: nil))
+            self?.record(Activity(incoming: false, title: "Clipboard to \(peer.name)", detail: self?.preview(text) ?? "", fileURL: nil, text: text))
         }
     }
 
@@ -357,7 +361,7 @@ final class FerryModel: ObservableObject {
                               peer: peer, myID: deviceID, myPort: port, size: Int64(data.count)) { wire in
             try await wire.send(data)
         }
-        record(Activity(incoming: false, title: "Text to \(peer.name)", detail: preview(text), fileURL: nil))
+        record(Activity(incoming: false, title: "Text to \(peer.name)", detail: preview(text), fileURL: nil, text: text))
         return peer.name
     }
 
@@ -393,6 +397,23 @@ final class FerryModel: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// Clicking a Recent item: shows the file in Finder, or copies the text again.
+    func open(_ item: Activity) {
+        if let url = item.fileURL {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else if let text = item.text {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+            refreshClipboard()
+            copiedActivityID = item.id
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1.5))
+                if self?.copiedActivityID == item.id { self?.copiedActivityID = nil }
+            }
+        }
+    }
 
     private func record(_ item: Activity) {
         activity.insert(item, at: 0)

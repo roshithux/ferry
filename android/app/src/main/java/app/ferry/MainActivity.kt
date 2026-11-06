@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
@@ -45,8 +46,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +83,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,6 +113,11 @@ private fun FerryScreen() {
     val paired by Ferry.paired.collectAsStateWithLifecycle()
     val macs by Ferry.macs.collectAsStateWithLifecycle()
 
+    // Coming back to the app: search again if a Mac is missing. A found paired Mac needs nothing.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        if (!Ferry.isMacOnline(Ferry.paired.value, Ferry.macs.value)) Ferry.discovery?.refresh()
+    }
+
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -116,7 +127,14 @@ private fun FerryScreen() {
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Ferry") }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Ferry") },
+                actions = { paired?.let { OverflowMenu(it) } },
+            )
+        },
+    ) { padding ->
         Box(Modifier.padding(padding)) {
             val mac = paired
             if (mac == null) PairingScreen(macs.values.sortedBy { it.name }) else PairedScreen(mac, Ferry.isMacOnline(mac, macs))
@@ -124,12 +142,62 @@ private fun FerryScreen() {
     }
 }
 
+@Composable
+private fun OverflowMenu(mac: PairedMac) {
+    val context = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    var showTips by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Quicker ways to send") },
+                onClick = {
+                    open = false
+                    showTips = true
+                },
+            )
+            if (Build.VERSION.SDK_INT >= 33) {
+                DropdownMenuItem(
+                    text = { Text("Add Quick Settings tile") },
+                    onClick = {
+                        open = false
+                        requestTile(context)
+                    },
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Unpair ${mac.name}") },
+                onClick = {
+                    open = false
+                    Ferry.unpair()
+                },
+            )
+        }
+    }
+    if (showTips) QuickerWaysDialog(onDismiss = { showTips = false })
+}
+
 // Pairing
+
+private const val SEARCH_RETRY_MS = 15_000L
 
 @Composable
 private fun PairingScreen(macs: List<MacService>) {
     var pairing by remember { mutableStateOf<Pair<MacService, String>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    // Nothing found yet: keep trying, so a Mac that appears shows up without restarting Ferry.
+    val searching = macs.isEmpty()
+    LaunchedEffect(searching) {
+        while (searching) {
+            delay(SEARCH_RETRY_MS)
+            Ferry.discovery?.refresh()
+        }
+    }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -162,6 +230,11 @@ private fun PairingScreen(macs: List<MacService>) {
                     leadingContent = { FerryBadge() },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
                 )
+            }
+        }
+        if (macs.isNotEmpty()) {
+            item {
+                TextButton(onClick = { Ferry.discovery?.refresh() }) { Text("Search again") }
             }
         }
     }
@@ -258,8 +331,6 @@ private fun PairedScreen(mac: PairedMac, online: Boolean) {
             }
         }
 
-        item { ShortcutsCard() }
-
         if (activity.isNotEmpty()) {
             item { Text("Recent", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp)) }
             items(activity, key = { it.time.toString() + it.title }) { item ->
@@ -286,30 +357,27 @@ private fun PairedScreen(mac: PairedMac, online: Boolean) {
             }
         }
 
-        item {
-            TextButton(onClick = { Ferry.unpair() }) { Text("Unpair ${mac.name}") }
-        }
     }
 }
 
 @Composable
-private fun ShortcutsCard() {
-    val context = LocalContext.current
-    Card {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Quicker ways to send", style = MaterialTheme.typography.titleSmall)
-            Shortcut(Icons.Filled.Share, "Share any file or link, then pick Ferry.")
-            Shortcut(Icons.Filled.Send, "Tap “Send clipboard” in Ferry's notification.")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) {
-                    Shortcut(painterResource(R.drawable.ic_clipboard_send), "Add the “Send clipboard” Quick Settings tile.")
-                }
-                if (Build.VERSION.SDK_INT >= 33) {
-                    TextButton(onClick = { requestTile(context) }) { Text("Add tile") }
-                }
+private fun QuickerWaysDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Quicker ways to send") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Shortcut(Icons.Filled.Share, "Share any file or link, then pick Ferry.")
+                Shortcut(Icons.Filled.Send, "Tap “Send clipboard” in Ferry's notification.")
+                Shortcut(
+                    painterResource(R.drawable.ic_clipboard_send),
+                    if (Build.VERSION.SDK_INT >= 33) "Add the “Send clipboard” Quick Settings tile from this menu."
+                    else "Add the “Send clipboard” tile when you edit Quick Settings.",
+                )
             }
-        }
-    }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable
